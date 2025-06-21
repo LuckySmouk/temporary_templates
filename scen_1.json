@@ -5,115 +5,106 @@
       "parameters": {
         "event": "ON_CRM_DEAL_ADD",
         "additionalFields": {
-          "fields": ["ID", "TITLE", "UF_CRM_PRODUCT_TYPE", "UF_CRM_SIZE", "UF_CRM_MATERIAL"]
+          "fields": ["ID","TITLE","UF_CRM_PRODUCT_TYPE","UF_CRM_SIZE","UF_CRM_MATERIAL"]
         },
         "credentials": {
-          "authType": "webhook",
-          "webhookPath": "your_bitrix_webhook_url"
+          "authType":"webhook",
+          "webhookPath":"https://your_domain/make/bitrix-webhook"
         }
       },
-      "name": "Bitrix24 Trigger",
-      "type": "bitrix24-trigger",
-      "typeVersion": 1
+      "name":"Bitrix24 Trigger",
+      "type":"bitrix24-trigger",
+      "typeVersion":1
     },
     {
       "parameters": {
-        "jsCode": "const deal = $json;\nreturn [\n  {\n    json: {\n      messages: [\n        {\n          role: 'system',\n          content: 'Ты ассистент GrandTent. Сгенерируй текст КП в формате HTML без CSS. Структура:\\n1. Шапка (Название компании)\\n2. Параметры (таблица)\\n3. Расчет стоимости\\n4. Сроки производства\\n5. Контакты. Данные:'\n        },\n        {\n          role: 'user',\n          content: `Тип: ${deal.UF_CRM_PRODUCT_TYPE || 'Не указан'}\\nРазмер: ${deal.UF_CRM_SIZE || 'Не указан'}\\nМатериал: ${deal.UF_CRM_MATERIAL || 'Не указан'}\\nКлиент: ${deal.TITLE}`\n        }\n      ],\n      model: 'gpt-4-turbo'\n    }\n  }\n];"
+        "condition":"{{$json.UF_CRM_PRODUCT_TYPE && $json.UF_CRM_SIZE && $json.UF_CRM_MATERIAL}}"
       },
-      "name": "Build GPT Prompt",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1
+      "name":"Filter Required Fields",
+      "type":"n8n-nodes-base.if",
+      "typeVersion":1
     },
     {
       "parameters": {
-        "model": "={{ $json.model }}",
-        "messages": "={{ $json.messages }}",
-        "options": {},
-        "credentials": {
-          "apiKey": "your_openai_api_key"
-        }
+        "jsCode":"const deal = $json; return [{ json: { messages: [ { role:'system', content:'Ты ассистент GrandTent. Сгенерируй коммерческое предложение в формате HTML без CSS. Структура:\\n• Шапка (логотип + название компании)\\n• Параметры (таблица)\\n• Расчет стоимости\\n• Сроки производства\\n• Контакты\\nДанные продажи:' }, { role:'user', content:`Тип: ${deal.UF_CRM_PRODUCT_TYPE}\\nРазмер: ${deal.UF_CRM_SIZE}\\nМатериал: ${deal.UF_CRM_MATERIAL}\\nКлиент: ${deal.TITLE}\\nID сделки: ${deal.ID}` } ], model:'gpt‑4‑turbo' } }];"
       },
-      "name": "Generate Proposal",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1
+      "name":"Build GPT Prompt",
+      "type":"n8n-nodes-base.function",
+      "typeVersion":1
     },
     {
       "parameters": {
-        "html": "={{ $json.choices[0].message.content }}",
-        "options": {
-          "format": "A4",
-          "margin": "20mm"
-        }
+        "model":"={{$json.model}}",
+        "messages":"={{$json.messages}}",
+        "options":{}
       },
-      "name": "Convert to PDF",
-      "type": "n8n-nodes-base.htmlToPdf",
-      "typeVersion": 1
+      "name":"Generate Proposal",
+      "type":"n8n-nodes-base.openAi",
+      "typeVersion":1,
+      "credentials":{"apiKey":"{{YOUR_OPENAI_KEY}}"}
+    },
+    {
+      "parameters":{
+        "continueOnFail":true
+      },
+      "name":"Catch GPT Errors",
+      "type":"n8n-nodes-base.errorTrigger",
+      "typeVersion":1
+    },
+    {
+      "parameters":{
+        "operation":"sendMessage",
+        "chatId":"{{MANAGER_CHAT_ID}}",
+        "text":"❗️Ошибка генерации Кp для сделки #{{$node[\"Bitrix24 Trigger\"].json.ID}}. Проверьте параметры или API."
+      },
+      "name":"Notify on GPT error",
+      "type":"n8n-nodes-base.telegram",
+      "typeVersion":1,
+      "credentials":{"accessToken":"{{YOUR_TELEGRAM_TOKEN}}"}
     },
     {
       "parameters": {
-        "operation": "sendDocument",
-        "file": "={{ $json.pdf }}",
-        "chatId": "your_manager_chat_id",
-        "caption": "КП для сделки #{{ $node[\"Bitrix24 Trigger\"].json.ID }}",
-        "credentials": {
-          "accessToken": "your_telegram_bot_token"
-        }
+        "html":"={{$json.choices[0].message.content}}",
+        "options":{"format":"A4","margin":"20mm"}
       },
-      "name": "Send to Telegram",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1
+      "name":"Convert to PDF",
+      "type":"n8n-nodes-base.htmlToPdf",
+      "typeVersion":1
+    },
+    {
+      "parameters":{
+        "operation":"sendDocument",
+        "file":"={{$json.pdf}}",
+        "chatId":"{{MANAGER_CHAT_ID}}",
+        "caption":"📄 КП для сделки #{{$node[\"Bitrix24 Trigger\"].json.ID}}",
+        "credentials":{"accessToken":"{{YOUR_TELEGRAM_TOKEN}}"}
+      },
+      "name":"Send to Telegram",
+      "type":"n8n-nodes-base.telegram",
+      "typeVersion":1
+    },
+    {
+      "parameters":{
+        "operation":"upload",
+        "file":"={{$node[\"Convert to PDF\"].binary.pdf.data}}",
+        "fields":{"element_id":"{{$node[\"Bitrix24 Trigger\"].json.ID}}"}
+      },
+      "name":"Upload PDF to Bitrix24 Files",
+      "type":"n8n-nodes-base.bitrix24",
+      "typeVersion":1,
+      "credentials":{"oauth2":"YOUR_BITRIX_CRED"}
     }
   ],
-  "connections": {
-    "Bitrix24 Trigger": {
-      "main": [
-        [
-          {
-            "node": "Build GPT Prompt",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build GPT Prompt": {
-      "main": [
-        [
-          {
-            "node": "Generate Proposal",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Generate Proposal": {
-      "main": [
-        [
-          {
-            "node": "Convert to PDF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Convert to PDF": {
-      "main": [
-        [
-          {
-            "node": "Send to Telegram",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Bitrix24 Trigger":{"main":[[{"node":"Filter Required Fields"}]]},
+    "Filter Required Fields":{"main":[[{"node":"Build GPT Prompt"}]],"else":[[{"node":"Notify on GPT error"}]]},
+    "Build GPT Prompt":{"main":[[{"node":"Generate Proposal"}]]},
+    "Generate Proposal":{"main":[[{"node":"Convert to PDF"}]],"error":[[{"node":"Catch GPT Errors"}]]},
+    "Catch GPT Errors":{"main":[[{"node":"Notify on GPT error"}]]},
+    "Convert to PDF":{"main":[[{"node":"Send to Telegram"},{"node":"Upload PDF to Bitrix24 Files"}]]}
   },
-  "active": true,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "id": "grandtent-auto-quote",
-  "version": 1
+  "active":true,
+  "settings":{"executionOrder":"v1"},
+  "id":"grandtent-auto-quote",
+  "version":2
 }
