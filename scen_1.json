@@ -12,26 +12,7 @@
       "name": "Build GPT Prompt",
       "type": "function",
       "parameters": {
-        "functionCode": `
-          const deal = $node['Bitrix24 Trigger'].json;
-          return {
-            model: 'gpt-4-turbo',
-            messages: [
-              {
-                role: 'system',
-                content: 'Ты ассистент GrandTent. Сгенерируй текст КП в формате HTML с таблицами. Структура: заголовок, параметры, стоимость, сроки. Данные:'
-              },
-              {
-                role: 'user',
-                content: JSON.stringify({
-                  client: deal.TITLE,
-                  type: deal.UF_CRM_TYPE,
-                  size: deal.UF_CRM_SIZE,
-                  material: deal.UF_CRM_MATERIAL
-                })
-              }
-            ]
-          };`
+        "functionCode": "const deal = items[0].json; return { model: 'gpt-4-turbo', messages: [ { role: 'system', content: 'Ты ассистент GrandTent. Сгенерируй текст КП в формате HTML с таблицами. Структура: заголовок, параметры, стоимость, сроки. Данные:' }, { role: 'user', content: JSON.stringify({ client: deal.TITLE || 'Не указан', type: deal.UF_CRM_TYPE || 'Не указан', size: deal.UF_CRM_SIZE || 'Не указан', material: deal.UF_CRM_MATERIAL || 'Не указан' }) } ] };"
       }
     },
     {
@@ -63,7 +44,7 @@
         "operation": "sendDocument",
         "file": "={{ $node['Convert to PDF'].json.pdf }}",
         "chatId": "{{MANAGER_CHAT_ID}}",
-        "caption": "КП для сделки #{{ $node['Bitrix24 Trigger'].json.ID }}"
+        "caption": "КП для сделки №" + "{{ $node['Bitrix24 Trigger'].json.ID }}"
       }
     }
   ]
