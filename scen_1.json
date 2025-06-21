@@ -1,51 +1,119 @@
 {
+  "name": "GrandTent Auto-Quotation",
   "nodes": [
     {
-      "name": "Bitrix24 Trigger",
-      "type": "bitrix24-trigger",
       "parameters": {
         "event": "ON_CRM_DEAL_ADD",
-        "credentials": "{{BITRIX24_CRED}}"
-      }
+        "additionalFields": {
+          "fields": ["ID", "TITLE", "UF_CRM_PRODUCT_TYPE", "UF_CRM_SIZE", "UF_CRM_MATERIAL"]
+        },
+        "credentials": {
+          "authType": "webhook",
+          "webhookPath": "your_bitrix_webhook_url"
+        }
+      },
+      "name": "Bitrix24 Trigger",
+      "type": "bitrix24-trigger",
+      "typeVersion": 1
     },
     {
+      "parameters": {
+        "jsCode": "const deal = $json;\nreturn [\n  {\n    json: {\n      messages: [\n        {\n          role: 'system',\n          content: 'Ты ассистент GrandTent. Сгенерируй текст КП в формате HTML без CSS. Структура:\\n1. Шапка (Название компании)\\n2. Параметры (таблица)\\n3. Расчет стоимости\\n4. Сроки производства\\n5. Контакты. Данные:'\n        },\n        {\n          role: 'user',\n          content: `Тип: ${deal.UF_CRM_PRODUCT_TYPE || 'Не указан'}\\nРазмер: ${deal.UF_CRM_SIZE || 'Не указан'}\\nМатериал: ${deal.UF_CRM_MATERIAL || 'Не указан'}\\nКлиент: ${deal.TITLE}`\n        }\n      ],\n      model: 'gpt-4-turbo'\n    }\n  }\n];"
+      },
       "name": "Build GPT Prompt",
-      "type": "function",
-      "parameters": {
-        "functionCode": "const deal = items[0].json; return { model: 'gpt-4-turbo', messages: [ { role: 'system', content: 'Ты ассистент GrandTent. Сгенерируй текст КП в формате HTML с таблицами. Структура: заголовок, параметры, стоимость, сроки. Данные:' }, { role: 'user', content: JSON.stringify({ client: deal.TITLE || 'Не указан', type: deal.UF_CRM_TYPE || 'Не указан', size: deal.UF_CRM_SIZE || 'Не указан', material: deal.UF_CRM_MATERIAL || 'Не указан' }) } ] };"
-      }
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1
     },
     {
-      "name": "Call OpenAI",
-      "type": "openai",
       "parameters": {
-        "resource": "chat",
-        "operation": "create",
         "model": "={{ $json.model }}",
         "messages": "={{ $json.messages }}",
-        "credentials": "{{OPENAI_API_KEY}}"
-      }
+        "options": {},
+        "credentials": {
+          "apiKey": "your_openai_api_key"
+        }
+      },
+      "name": "Generate Proposal",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1
     },
     {
-      "name": "Convert to PDF",
-      "type": "htmlToPdf",
       "parameters": {
-        "html": "={{ $node['Call OpenAI'].json.choices[0].message.content }}",
+        "html": "={{ $json.choices[0].message.content }}",
         "options": {
           "format": "A4",
           "margin": "20mm"
         }
-      }
+      },
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.htmlToPdf",
+      "typeVersion": 1
     },
     {
-      "name": "Send to Telegram",
-      "type": "telegram",
       "parameters": {
         "operation": "sendDocument",
-        "file": "={{ $node['Convert to PDF'].json.pdf }}",
-        "chatId": "{{MANAGER_CHAT_ID}}",
-        "caption": "КП для сделки №" + "{{ $node['Bitrix24 Trigger'].json.ID }}"
-      }
+        "file": "={{ $json.pdf }}",
+        "chatId": "your_manager_chat_id",
+        "caption": "КП для сделки #{{ $node[\"Bitrix24 Trigger\"].json.ID }}",
+        "credentials": {
+          "accessToken": "your_telegram_bot_token"
+        }
+      },
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1
     }
-  ]
+  ],
+  "connections": {
+    "Bitrix24 Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build GPT Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build GPT Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Proposal": {
+      "main": [
+        [
+          {
+            "node": "Convert to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to PDF": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "grandtent-auto-quote",
+  "version": 1
 }
